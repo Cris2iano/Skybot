@@ -202,15 +202,17 @@ const timeout = setTimeout(() => {
   controller.abort();
 }, 30000);
 
-const response = await fetch('https://agentrouter.org/v1/chat/completions', {
+const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
   method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${process.env.AGENT_ROUTER_API_KEY}`
-  },
+ headers: {
+  'Content-Type': 'application/json',
+  'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+  'HTTP-Referer': 'https://skybot-production-e979.up.railway.app',
+  'X-Title': 'SkyBot'
+},
   signal: controller.signal,
   body: JSON.stringify({
-    model: 'glm-5.1',
+    model: 'z-ai/glm-4.5-air:free',
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: message.trim() }
@@ -225,7 +227,7 @@ const data = await response.json();
 clearTimeout(timeout);
 
 if (!response.ok) {
-  console.error('AgentRouter error:', data);
+  console.error('OpenRouter error:', data);
 
   return res.json({
     reply: 'The AI service is temporarily unavailable. Please try again.'
