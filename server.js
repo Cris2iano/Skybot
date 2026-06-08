@@ -8,7 +8,7 @@ const app = express();
 app.use(helmet());
 app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '10kb' }));
-app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }));
+app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 5000 }));
 
 // ── System prompt with real flight data ───────────────────────────
 const SYSTEM_PROMPT = `You are SkyBot, the official customer assistant for SkyBridge Airlines.
@@ -195,43 +195,69 @@ app.post('/chat', bearerAuth, async (req, res) => {
     return res.status(400).json({ error: 'message too long' });
 
   try {
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: message.trim() }
-        ],
-        max_tokens: 800,
-        temperature: 0.3
-      })
-    });
+   const controller = new AbortController();
 
-    const data = await response.json();
+const timeout = setTimeout(() => {
+  controller.abort();
+}, 30000);
 
-    if (!response.ok) {
-      console.error('Groq error:', data);
-      return res.status(502).json({ error: 'AI service error' });
-    }
+const response = await fetch('https://agentrouter.org/v1/chat/completions', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${process.env.AGENT_ROUTER_API_KEY}`
+  },
+  signal: controller.signal,
+  body: JSON.stringify({
+    model: 'glm-5.1',
+    messages: [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content: message.trim() }
+    ],
+    max_tokens: 800,
+    temperature: 0.3
+  })
+});
 
-    res.json({ reply: data.choices[0].message.content });
+const data = await response.json();
 
-  } catch (err) {
-    console.error('Server error:', err.message);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+clearTimeout(timeout);
+
+if (!response.ok) {
+  console.error('AgentRouter error:', data);
+
+  return res.json({
+    reply: 'The AI service is temporarily unavailable. Please try again.'
+  });
+}
+
+res.json({
+  reply:
+    data?.choices?.[0]?.message?.content ||
+    'Sorry, I could not generate a response.'
+});
+
+} catch (err) {
+  console.error('Server error:', err.message);
+
+  res.status(500).json({
+    error: 'Internal server error'
+  });
+}
 });
 
 // ── Health check ──────────────────────────────────────────────────
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', bot: 'SkyBot', airline: 'SkyBridge Airlines' });
+  res.json({
+    status: 'ok',
+    bot: 'SkyBot',
+    airline: 'SkyBridge Airlines'
+  });
 });
 
 // ── Start ─────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 4005;
-app.listen(PORT, () => console.log(`SkyBot running on port ${PORT}`));
+
+app.listen(PORT, () => {
+  console.log(`SkyBot running on port ${PORT}`);
+});
